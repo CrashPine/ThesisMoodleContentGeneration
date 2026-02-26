@@ -5,10 +5,11 @@ namespace Backend.BLL.QuestionGenerationModule;
 
 public class QuizOrchestrator : IDisposable
 {
-    private readonly PdfToImageConverter _pdfConverter;
-    private readonly OllamaVisionOcr _visionOcr;
-    private readonly CloudContentProcessor _cloudProcessor;
-    private readonly MoodleXmlGenerator _xmlGenerator;
+    public readonly PdfToImageConverter PdfConverter;
+    
+    public readonly OllamaVisionOcr VisionOcr;
+    public readonly CloudContentProcessor CloudProcessor;
+    public readonly MoodleXmlGenerator XmlGenerator;
 
     public QuizOrchestrator(
         string laptopOllamaUrl, 
@@ -19,10 +20,11 @@ public class QuizOrchestrator : IDisposable
         string ocrModel
         )
     {
-        _pdfConverter = new PdfToImageConverter();
-        _visionOcr = new OllamaVisionOcr(laptopOllamaUrl, ocrModel); // Использует glm-ocr по умолчанию
-        _cloudProcessor = new CloudContentProcessor(cloudOllamaUrl, apiKey, cloudModel);
-        _xmlGenerator = new MoodleXmlGenerator(cloudOllamaUrl, apiKey, cloudModel);
+        PdfConverter = new PdfToImageConverter();
+        
+        VisionOcr = new OllamaVisionOcr(laptopOllamaUrl, ocrModel); 
+        CloudProcessor = new CloudContentProcessor(cloudOllamaUrl, apiKey, cloudModel);
+        XmlGenerator = new MoodleXmlGenerator(cloudOllamaUrl, apiKey, cloudModel);
     }
 
     /// <summary>
@@ -34,21 +36,17 @@ public class QuizOrchestrator : IDisposable
     {
         List<string> aggregatedTexts = new List<string>();
 
-        // Цикл обработки N файлов
         foreach (var path in filePaths)
         {
             if (!File.Exists(path)) continue;
 
             Console.WriteLine($"\n[Orchestrator] Обработка файла: {Path.GetFileName(path)}");
             
-            // 1. PDF -> Images
             byte[] pdfBytes = await File.ReadAllBytesAsync(path);
-            var images = _pdfConverter.GetImages(pdfBytes, dpi: 96);
+            var images = PdfConverter.GetImages(pdfBytes, dpi: 96);
 
-            // 2. Images -> OCR
-            var pageTexts = await _visionOcr.ProcessImagesAsync(images);
+            var pageTexts = await VisionOcr.ProcessImagesAsync(images);
             
-            // Собираем текст в общую базу данных для текущей сессии
             aggregatedTexts.AddRange(pageTexts);
         }
 
@@ -57,18 +55,16 @@ public class QuizOrchestrator : IDisposable
 
         Console.WriteLine("\n[Orchestrator] Генерация вопросов по всем материалам...");
 
-        // 3. Анализ и генерация вопросов
-        string rawQuestions = await _cloudProcessor.AnalyzeOcrResultsAsync(aggregatedTexts, mcq, mq, pt);
+        string rawQuestions = await CloudProcessor.AnalyzeOcrResultsAsync(aggregatedTexts, mcq, mq, pt);
 
-        // 4. Валидация и конвертация в Moodle XML
-        string? finalXml = await _xmlGenerator.GenerateMoodleXmlAsync(rawQuestions, "Combined Study Quiz");
+        string? finalXml = await XmlGenerator.GenerateMoodleXmlAsync(rawQuestions, "Combined Study Quiz");
 
         return (rawQuestions, finalXml);
     }
 
     public void Dispose()
     {
-        _cloudProcessor.Dispose();
-        _xmlGenerator.Dispose();
+        CloudProcessor.Dispose();
+        XmlGenerator.Dispose();
     }
 }
