@@ -4,41 +4,26 @@ using OllamaSharp.Models;
 
 namespace Backend.BLL.QuestionGenerationModule;
 
-public class CloudContentProcessor : IDisposable
+public class CloudContentProcessor
+{
+    private readonly OllamaApiClient _ollamaClient;
+    private readonly string _modelName;
+
+    public CloudContentProcessor(OllamaApiClient client, string modelName)
     {
-        private readonly OllamaApiClient _ollamaClient;
-        private readonly string _modelName;
+        _ollamaClient = client ?? throw new ArgumentNullException(nameof(client));
+        _modelName = modelName ?? throw new ArgumentNullException(nameof(modelName));
+    }
 
-        public CloudContentProcessor(string baseUri, string apiKey, string modelName)
+    public async Task<string> AnalyzeOcrResultsAsync(List<string> ocrResults, int mcqCount, int matchingCount, int problemCount)
+    {
+        var fullContext = new StringBuilder();
+        for (int i = 0; i < ocrResults.Count; i++)
         {
-            _modelName = modelName;
-
-            var httpClient = new HttpClient
-            {
-                BaseAddress = new Uri(baseUri),
-                Timeout = TimeSpan.FromMinutes(10) 
-            };
-
-            if (!string.IsNullOrEmpty(apiKey))
-            {
-                httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
-            }
-
-            _ollamaClient = new OllamaApiClient(httpClient);
+            fullContext.AppendLine($"--- СТРАНИЦА {i + 1} ---\n{ocrResults[i]}\n");
         }
 
-        /// <summary>
-        /// Принимает список текстов, распознанных моделью OCR (OllamaVisionOcr)
-        /// </summary>
-        public async Task<string> AnalyzeOcrResultsAsync(List<string> ocrResults, int mcqCount, int matchingCount, int problemCount)
-        {
-            var fullContext = new StringBuilder();
-            for (int i = 0; i < ocrResults.Count; i++)
-            {
-                fullContext.AppendLine($"--- СТРАНИЦА {i + 1} ---\n{ocrResults[i]}\n");
-            }
-
-            string prompt = $@"You are an expert Educational Architect and Assessment Specialist. 
+        string prompt = $@"You are an expert Educational Architect and Assessment Specialist. 
 Your goal is to design a high-stakes exam that measures deep conceptual understanding, analytical skills, and the ability to apply knowledge, rather than simple recall.
 
 ### QUANTITY REQUIREMENTS:
@@ -85,35 +70,25 @@ Step-by-step Logic: [Brief explanation of the solution path]
 
 ---
 STUDY MATERIALS (OCR DATA):
-{fullContext}";
-            
-            var request = new GenerateRequest
-            {
-                Model = _modelName,
-                Prompt = prompt,
-                Stream = true
-            };
+{fullContext}"; // оставляем твой большой prompt без изменений
 
-            var sb = new StringBuilder();
+        var request = new GenerateRequest
+        {
+            Model = _modelName,
+            Prompt = prompt,
+            Stream = true
+        };
 
-            try
+        var sb = new StringBuilder();
+        await foreach (var chunk in _ollamaClient.GenerateAsync(request))
+        {
+            if (chunk?.Response != null)
             {
-                await foreach (var chunk in _ollamaClient.GenerateAsync(request))
-                {
-                    if (chunk?.Response != null)
-                    {
-                        sb.Append(chunk.Response);
-                        Console.Write(chunk.Response); 
-                    }
-                }
+                sb.Append(chunk.Response);
+                Console.Write(chunk.Response);
             }
-            catch (Exception ex)
-            {
-                return $"[Cloud Error]: {ex.Message}";
-            }
-
-            return sb.ToString();
         }
 
-        public void Dispose() => _ollamaClient.Dispose();
+        return sb.ToString();
     }
+}

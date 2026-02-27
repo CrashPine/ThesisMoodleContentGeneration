@@ -1,14 +1,16 @@
 using Backend.API.Configuration;
 using Backend.BLL.Interfaces;
+using Backend.BLL.ParserModule;
+using Backend.BLL.ParserModule.AI;
 using Backend.BLL.QuestionGenerationModule;
 using Backend.BLL.Services;
 using Backend.DAL;
 using Microsoft.EntityFrameworkCore;
+using OllamaSharp;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // 1. Подключаем базу SQLite с явным полным путем
-// Поднимаемся на три уровня: bin/Debug/net9.0 -> Backend.API
 var projectRoot = Path.Combine(AppContext.BaseDirectory, "..", "..", "..");
 var dbPath = Path.Combine(projectRoot, "moodle_tests.db");
 
@@ -28,15 +30,45 @@ var orchestratorSettings = builder.Configuration
     .GetSection("QuizOrchestrator")
     .Get<QuizOrchestratorSettings>();
 
-// 5. Регистрируем QuizOrchestrator
-builder.Services.AddSingleton(new QuizOrchestrator(
-    laptopOllamaUrl: orchestratorSettings.Url,
-    cloudOllamaUrl: orchestratorSettings.Url,
-    apiKey: orchestratorSettings.ApiKey,
-    cloudModel: orchestratorSettings.SummaryModel,
-    ocrModel: orchestratorSettings.OcrModel));
+// 5. Регистрируем HttpClient для Ollama (один на всё приложение)
+builder.Services.AddHttpClient("OllamaClient", client =>
+{
+    client.BaseAddress = new Uri(orchestratorSettings.Url);
+    client.Timeout = TimeSpan.FromMinutes(10);
+    if (!string.IsNullOrEmpty(orchestratorSettings.ApiKey))
+        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {orchestratorSettings.ApiKey}");
+});
 
-// 6. Регистрируем сервис
+// 6. Регистрируем одиночный OllamaApiClient через фабрику HttpClient
+builder.Services.AddSingleton(sp =>
+{
+    var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
+    var httpClient = httpClientFactory.CreateClient("OllamaClient");
+    return new OllamaApiClient(httpClient);
+});
+
+// 7. Регистрируем PdfConverter
+builder.Services.AddSingleton<PdfToImageConverter>();
+
+// 8. Регистрируем модули через DI, используя один OllamaApiClient
+builder.Services.AddSingleton<OllamaVisionOcr>(sp =>
+    new OllamaVisionOcr(sp.GetRequiredService<OllamaApiClient>(), orchestratorSettings.OcrModel));
+
+builder.Services.AddSingleton<CloudContentProcessor>(sp =>
+    new CloudContentProcessor(sp.GetRequiredService<OllamaApiClient>(), orchestratorSettings.SummaryModel));
+
+builder.Services.AddSingleton<MoodleXmlGenerator>(sp =>
+    new MoodleXmlGenerator(sp.GetRequiredService<OllamaApiClient>(), orchestratorSettings.SummaryModel));
+
+// 9. Регистрируем QuizOrchestrator
+builder.Services.AddSingleton<QuizOrchestrator>(sp =>
+    new QuizOrchestrator(
+        sp.GetRequiredService<PdfToImageConverter>(),
+        sp.GetRequiredService<OllamaVisionOcr>(),
+        sp.GetRequiredService<CloudContentProcessor>(),
+        sp.GetRequiredService<MoodleXmlGenerator>()));
+
+// 10. Регистрируем сервис
 builder.Services.AddScoped<ITestService, TestService>();
 
 builder.Services.AddControllers();
@@ -45,11 +77,11 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// 7. Автоматическое применение миграций при старте
+// 11. Автоматическое применение миграций при старте
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    db.Database.Migrate(); // создаёт таблицы, если их нет
+    db.Database.Migrate();
 }
 
 if (app.Environment.IsDevelopment())
