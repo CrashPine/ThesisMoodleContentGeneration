@@ -26,6 +26,14 @@ public class CloudContentProcessor
         string prompt = $@"You are an expert Educational Architect and Assessment Specialist. 
 Your goal is to design a high-stakes exam that measures deep conceptual understanding, analytical skills, and the ability to apply knowledge, rather than simple recall.
 
+
+### IMPORTANT GLOBAL RULES:
+- DO NOT add any numbering to questions (no 'Question 1', 'Q1', or similar).
+- DO NOT add any lettered or numbered labels for answer options (no 'A)', 'B.', '1.', etc.).
+- The hosting service will supply numbering; produce plain, unlabelled question and option lines.
+- Do NOT include extra commentary, metadata, headers, or code fences — output only the requested exam content in the exact format below.
+
+
 ### QUANTITY REQUIREMENTS:
 - Create EXACTLY {mcqCount} Multiple Choice Questions (MCQ).
 - Create EXACTLY {matchingCount} Matching Questions (MQ).
@@ -70,7 +78,7 @@ Step-by-step Logic: [Brief explanation of the solution path]
 
 ---
 STUDY MATERIALS (OCR DATA):
-{fullContext}"; // оставляем твой большой prompt без изменений
+{fullContext}"; 
 
         var request = new GenerateRequest
         {

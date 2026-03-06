@@ -16,7 +16,6 @@ public class TestService(
 {
     public async Task<TestResultDto> GenerateTestFromFilesAsync(GenerateRequestDto request, List<IFormFile> files)
     {
-        // 1. Работа с пользователем
         var user = await context.Users.FirstOrDefaultAsync(u => u.MoodleUserId == request.MoodleUserId)
                    ?? new User { MoodleUserId = request.MoodleUserId };
         
@@ -24,7 +23,6 @@ public class TestService(
 
         List<string> allExtractedTexts = [];
 
-        // 2. OCR и сохранение промежуточного текста (TextFromTheFile)
         foreach (var file in files)
         {
             using var ms = new MemoryStream();
@@ -34,7 +32,6 @@ public class TestService(
             var images = orchestrator.PdfConverter.GetImages(fileBytes, 96);
             var pageTexts = await orchestrator.VisionOcr.ProcessImagesAsync(images);
             
-            // Исправляем неоднозначность Join
             string combinedFileText = string.Join("\n", (IEnumerable<string>)pageTexts);
             allExtractedTexts.Add(combinedFileText);
 
@@ -46,7 +43,6 @@ public class TestService(
             });
         }
 
-        // 3. Генерация через AI
         string rawQuestions = await orchestrator.CloudProcessor.AnalyzeOcrResultsAsync(
             allExtractedTexts, 
             request.McqCount, 
@@ -57,7 +53,6 @@ public class TestService(
 
         
         
-        // 4. Сохранение теста
         var test = new Test
         {
             User = user,
@@ -69,7 +64,6 @@ public class TestService(
         context.Tests.Add(test);
         await context.SaveChangesAsync();
 
-        // ИСПОЛЬЗУЕМ АВТОМАППЕР
         return mapper.Map<TestResultDto>(test);
     }
 

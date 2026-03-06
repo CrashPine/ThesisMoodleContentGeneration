@@ -64,7 +64,7 @@ public class ApplicationDbContext : DbContext
                 .IsRequired();
 
             entity.HasOne(ts => ts.User)
-                .WithMany(u => u.TextSources) // тут обязательно указываем коллекцию
+                .WithMany(u => u.TextSources) 
                 .HasForeignKey(ts => ts.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
