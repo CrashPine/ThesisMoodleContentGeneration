@@ -52,12 +52,18 @@ builder.Services.AddSingleton<CloudContentProcessor>(sp =>
 builder.Services.AddSingleton<MoodleXmlGenerator>(sp =>
     new MoodleXmlGenerator(sp.GetRequiredService<OllamaApiClient>(), orchestratorSettings.SummaryModel));
 
+builder.Services.AddSingleton<QuestionRefiner>(sp =>
+    new QuestionRefiner(sp.GetRequiredService<OllamaApiClient>(), orchestratorSettings.SummaryModel));
+
 builder.Services.AddSingleton<QuizOrchestrator>(sp =>
     new QuizOrchestrator(
         sp.GetRequiredService<PdfToImageConverter>(),
         sp.GetRequiredService<OllamaVisionOcr>(),
         sp.GetRequiredService<CloudContentProcessor>(),
-        sp.GetRequiredService<MoodleXmlGenerator>()));
+        sp.GetRequiredService<MoodleXmlGenerator>(),
+        sp.GetRequiredService<QuestionRefiner>()
+        
+        ));
 
 builder.Services.AddScoped<ITestService, TestService>();
 
